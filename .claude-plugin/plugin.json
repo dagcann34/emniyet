@@ -1,0 +1,57 @@
+{
+  "name": "emniyet",
+  "version": "0.1.0",
+  "description": "Claude'un çalıştırdığı her komutu sade dille açıklar, riskliyse önce yedek alır ve tek tıkla geri alır. / Explains every command in plain words, backs up before risky ones, one-click undo.",
+  "author": {
+    "name": "dagcann34"
+  },
+  "license": "MIT",
+  "keywords": [
+    "safety",
+    "undo",
+    "backup",
+    "guardrails",
+    "güvenlik",
+    "geri-al",
+    "open-source",
+    "free"
+  ],
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Dil / Language",
+      "description": "Açıklamaların dili (tr / en)",
+      "default": "tr",
+      "options": [
+        "tr",
+        "en"
+      ]
+    },
+    "confirmFrom": {
+      "type": "string",
+      "title": "Onay seviyesi / Confirm from",
+      "description": "Bu risk seviyesinden itibaren çalıştırmadan önce sor: high (yüksek), critical (sadece kritik), never (hiç)",
+      "default": "high",
+      "options": [
+        "high",
+        "critical",
+        "never"
+      ]
+    },
+    "aiExplain": {
+      "type": "boolean",
+      "title": "Yapay zekâ açıklaması / AI explanations",
+      "description": "Tanınmayan komutlar için küçük bir modelle (haiku) kısa açıklama üret",
+      "default": true
+    },
+    "maxBackupMB": {
+      "type": "number",
+      "title": "Yedek boyut sınırı (MB)",
+      "description": "Bundan büyük hedefler arşivlenmez",
+      "default": 1024
+    }
+  },
+  "homepage": "https://github.com/dagcann34/emniyet",
+  "repository": "https://github.com/dagcann34/emniyet"
+}

@@ -1,0 +1,4 @@
+.claude-plugin/types/
+node_modules/
+*.jwk.json
+ozel-anahtar*

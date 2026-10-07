@@ -1,0 +1,14 @@
+{
+  "name": "emniyet",
+  "owner": {
+    "name": "dagcann34"
+  },
+  "plugins": [
+    {
+      "name": "emniyet",
+      "source": "./",
+      "description": "Komutları sade dille açıklar, riskliyse yedek alır, tek tıkla geri alır."
+    }
+  ],
+  "description": "Emniyet: Claude Code için güvenlik ağı — açıklama, yedek, tek tıkla geri alma."
+}
