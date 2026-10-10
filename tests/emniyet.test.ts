@@ -15,7 +15,7 @@ async function paneHas($: any, re: RegExp, surface: 'terminal' | 'desktop' = 'te
 
 type World = { runs: string[][]; asked: string[]; ran: string[] }
 
-function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; answer?: 'yes' | 'no'; store?: Record<string, unknown> } = {}): World {
+function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; answer?: 'yes' | 'no'; store?: Record<string, unknown>; failTar?: boolean } = {}): World {
   const w: World = { runs: [], asked: [], ran: [] }
   mock.clock(on, { now: NOW })
   mock.store(on, { firstRun: opts.firstRun ?? NOW, ...(opts.store ?? {}) })
@@ -26,6 +26,9 @@ function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; ans
   on('fs.read', () => ({ value: '' }))
   on('process.run', ($, e) => {
     w.runs.push([...e.argv])
+    if (opts.failTar && e.argv[0] === 'tar') {
+      return { value: { exitCode: 1, stdout: '', stderr: 'simulated backup failure', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     const out = e.argv[0] === 'du' ? '12\t/x\n' : e.argv.includes('rev-parse') ? 'abc1234\n' : e.argv.includes('symbolic-ref') ? 'main\n' : ''
     return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
@@ -54,6 +57,15 @@ test('rm öncesi hedef dosya arşivlenir', async ($, on) => {
   expect(tar).toContain('/Users/ali/proje/notlar.txt')
   expect(await paneHas($, /yedek ✓/)).toBe(true)
   expect(await paneHas($, /kalıcı olarak silinir/)).toBe(true)
+})
+
+test('yedekleme başarısızsa komut çalıştırılmaz', async ($, on) => {
+  const w = world(on, { failTar: true })
+  const r = await $.tool.call({ tool: 'Bash', command: 'rm notlar.txt' })
+  expect(r.deny).toBeDefined()
+  expect(r.deny).toContain('yedek alınamadığı')
+  expect(w.ran).toEqual([])
+  expect(w.runs.some(a => a[0] === 'tar')).toBe(true)
 })
 
 test('kritik komutta onay sorulur; hayır denirse çalışmaz', async ($, on) => {
