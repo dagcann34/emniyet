@@ -511,6 +511,15 @@ export const register: Register = (on, options) => {
         backup = 'saved'
       } else {
         backup = r.notes.length ? 'skipped' : 'failed'
+        // Fail closed: do not run a destructive command without its required backup.
+        await bump($, 'blocked')
+        const reason = t(
+          'Gerekli yedek alınamadığı için komut güvenlik amacıyla çalıştırılmadı.',
+          'The command was blocked because its required backup could not be created.',
+        )
+        await addEntry($, { id, at: now, command, risk: a.risk, explanation, backup, notes: [...notes, reason], outcome: 'denied' })
+        await audit($, ctx.home, { at: new Date(now).toISOString(), type: 'blocked', id, command, cwd: ctx.cwd, risk: a.risk, backup, reason })
+        return { deny: reason }
       }
     }
 
