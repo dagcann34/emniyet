@@ -35,7 +35,7 @@ export type Analysis = {
   unknown: string[]
 }
 
-export type Ctx = { cwd: string; home: string; lang: Lang }
+export type Ctx = { cwd: string; home: string; lang: Lang; depth: number }
 
 export const RISK_LABEL: Record<Lang, readonly string[]> = {
   tr: ['güvenli', 'düşük risk', 'orta risk', 'yüksek risk', 'KRİTİK'],
@@ -210,7 +210,21 @@ type SegResult = {
   remote?: { name: string; branch?: string }
   branchRef?: string
   unknown?: boolean
+  secret?: boolean
 }
+
+const SENSITIVE = /(\.ssh\/(id_|.*_key|authorized_keys|config)|\bid_(rsa|ed25519|ecdsa|dsa)\b|\.aws\/credentials|\.config\/gcloud|\.azure\/|\.kube\/config|\.docker\/config\.json|\.netrc|\.npmrc|\.pypirc|\.git-credentials|(^|[\s/'"=])\.env(?!\.(example|sample|template|dist))(\.[\w-]+)?(?![\w.-])|\.pem\b|\.p12\b|\.keystore\b|\/etc\/(shadow|sudoers)|security\s+(find|dump)-(generic|internet)-password|security\s+dump-keychain|Keychains\/|Login Data|Cookies\b|wallet\.dat|\.gnupg\/)/i
+const PERSIST = /(\.(bashrc|bash_profile|zshrc|zprofile|zshenv|profile|config\/fish\/config\.fish)\b|LaunchAgents|LaunchDaemons|\/etc\/(cron|systemd|rc\.local|profile)|\.config\/autostart|crontab\s+-(?!l|r))/i
+/** Read/Edit/Write için: dosya yolu gizli bilgi içeriyor mu? */
+export function isSensitivePath(p: string): boolean {
+  return SENSITIVE.test(p) && !/\.(example|sample|template|dist)$/i.test(p)
+}
+/** Dosya her açılışta otomatik çalışan bir yerde mi (kabuk başlangıç dosyaları, LaunchAgents, cron)? */
+export function isPersistPath(p: string): boolean {
+  return PERSIST.test(p)
+}
+
+const NETWORK = /\b(curl|wget|nc|ncat|netcat|scp|sftp|ftp|rsync\s+.*\S+:|ssh|telnet|socat|http(ie)?|Invoke-WebRequest)\b|\/dev\/tcp\//
 
 const SQL_DANGER = /\b(drop\s+(table|database|schema)|truncate\s+table|truncate\s+\w|delete\s+from\s+\w+(?![\s\S]*\bwhere\b))/i
 
@@ -230,6 +244,9 @@ const READONLY: Record<string, [string, string]> = {
   find: ['Dosya arar.', 'Searches for files.'],
   wc: ['Satır/kelime sayar.', 'Counts lines/words.'],
   echo: ['Ekrana bir metin yazar.', 'Prints some text.'],
+  export: ['Bir ortam değişkeni ayarlar (yalnızca bu terminal için).', 'Sets an environment variable (this terminal only).'],
+  unset: ['Bir ortam değişkenini kaldırır.', 'Removes an environment variable.'],
+  set: ['Kabuk ayarlarını değiştirir.', 'Changes shell options.'],
   printf: ['Ekrana bir metin yazar.', 'Prints some text.'],
   which: ['Bir programın nerede kurulu olduğunu bulur.', 'Finds where a program is installed.'],
   whoami: ['Hangi kullanıcı olduğunu gösterir.', 'Shows the current user.'],
@@ -266,6 +283,32 @@ function analyzeSegment(seg: { text: string; pipedFrom?: string }, ctx: Ctx): Se
   const { words, sudo } = stripWrappers(raw)
   const result = analyzeWords(words, seg, ctx)
 
+  // Gizli bilgiler: SSH anahtarları, bulut kimlikleri, .env, parola kasaları
+  const firstWord = base(words[0] ?? '')
+  if (SENSITIVE.test(seg.text) && firstWord !== 'echo' && firstWord !== 'printf') {
+    result.secret = true
+    result.risk = Math.max(result.risk, 3) as Risk
+    result.line += L(ctx, ' 🔑 Gizli bilgilerinize (anahtar, parola, .env) erişir.', ' 🔑 Touches your secrets (keys, passwords, .env).')
+    result.unknown = false
+  }
+  // Kalıcılık: her açılışta kendiliğinden çalışacak değişiklikler
+  if (PERSIST.test(seg.text) && (redirects.some(r => r.op.startsWith('>')) || /\b(tee|cp|mv|ln|install|launchctl|systemctl\s+enable|crontab\s+-(?!l|r))\b/.test(seg.text))) {
+    result.risk = Math.max(result.risk, 3) as Risk
+    result.line += L(ctx, ' 🔁 Bilgisayar her açıldığında ya da terminal her başladığında otomatik çalışacak bir değişiklik yapar.', ' 🔁 Adds something that runs automatically at every login or new terminal.')
+    result.backup = [...new Set([...(result.backup ?? []), 'paths' as const])]
+    result.unknown = false
+  }
+  // İçinde başka komutun çıktısı: $(…) veya `…`
+  for (const m of seg.text.matchAll(/\$\(([^()]*)\)|`([^`]*)`/g)) {
+    const inner = (m[1] ?? m[2] ?? '').trim()
+    if (!inner || ctx.depth >= 3) continue
+    const sub = analyze(inner, { ...ctx, depth: ctx.depth + 1 })
+    if (sub.risk >= 2) {
+      result.risk = Math.max(result.risk, sub.risk) as Risk
+      result.line += L(ctx, ' İçinde çalışan komut: ', ' Inner command: ') + sub.lines.join(' ')
+    }
+  }
+
   // Dosyanın üzerine yazan yönlendirme: komut > dosya
   const overwrite = redirects.filter(r => (r.op === '>' || r.op === '>|' || r.op === '&>') && r.target !== '/dev/null' && !/^\/dev\/(stdout|stderr|tty)/.test(r.target))
   if (overwrite.length > 0) {
@@ -295,6 +338,40 @@ function analyzeWords(words: string[], seg: { text: string; pipedFrom?: string }
   const ops = operands(args)
   const sub = ops[0] ?? ''
   const t = (tr: string, en: string) => L(ctx, tr, en)
+
+  // Gizlenmiş komut: base64/xxd/openssl ile çözülüp kabuğa verilen içerik
+  if (seg.pipedFrom && /^(ba|z|da|fi)?sh$|^python3?$|^node$|^perl$|^ruby$/.test(cmd) && /\b(base64\s+(-d|-D|--decode)|xxd\s+-r|openssl\s+\S*\s*.*-d\b|rev\b|tr\s)/.test(seg.pipedFrom)) {
+    return {
+      risk: 4,
+      line: t('Gizlenmiş (şifrelenmiş) bir komutu çözüp çalıştırır. Ne yapacağı görünmüyor; kötü amaçlı yazılımların sık kullandığı bir yöntemdir.',
+        'Decodes and runs a hidden (encoded) command. What it does is not visible; a common malware technique.'),
+      irreversible: t('gizlenmiş komut', 'hidden command'),
+    }
+  }
+
+  // eval "$(curl …)", bash <(curl …), sh -c "$(wget …)": internetten gelen kodu görmeden çalıştırmak
+  if (/^(eval|(ba|z|da|fi)?sh|source|\.)$/.test(cmd) && /(\$\(|<\(|`)\s*(curl|wget|fetch|iwr)\b/.test(seg.text)) {
+    return {
+      risk: 4,
+      line: t('İnternetten indirilen kodu, içeriği görülmeden doğrudan çalıştırır. Kod bilgisayarda her şeyi yapabilir.', 'Runs code downloaded from the internet without showing it. It can do anything on this computer.'),
+      irreversible: t('internetten indirilen kod', 'downloaded code'),
+    }
+  }
+
+  // eval / sh -c "…": içteki komutu ayrıca incele
+  if ((cmd === 'eval' || (/^(ba|z|da)?sh$/.test(cmd) && args[0] === '-c')) && ctx.depth < 3) {
+    const inner = cmd === 'eval' ? args.join(' ') : (args[1] ?? '')
+    if (inner) {
+      const sub = analyze(inner, { ...ctx, depth: ctx.depth + 1 })
+      return {
+        risk: Math.max(2, sub.risk) as Risk,
+        line: t('Bir metni komut olarak çalıştırır: ', 'Runs a text as a command: ') + sub.lines.join(' '),
+        backup: sub.backup, targets: sub.paths,
+        ...(sub.irreversible[0] ? { irreversible: sub.irreversible[0] } : {}),
+        ...(sub.remote ? { remote: sub.remote } : {}),
+      }
+    }
+  }
 
   // İnternetten indirilen betiği doğrudan çalıştırmak: curl … | sh
   if (seg.pipedFrom && /^(ba|z|da|fi)?sh$|^python3?$|^node$|^ruby$|^perl$/.test(cmd) && /\b(curl|wget)\b/.test(seg.pipedFrom)) {
@@ -568,20 +645,29 @@ function analyzeGit(args: string[], ctx: Ctx): SegResult {
 
 // ───────────────────────── dışa açık ─────────────────────────
 
-export function analyze(command: string, ctx: Ctx): Analysis {
-  const segs = splitSegments(command)
+export function analyze(command: string, ctxIn: Omit<Ctx, 'depth'> & { depth?: number }): Analysis {
+  const ctx: Ctx = { ...ctxIn, depth: ctxIn.depth ?? 0 }
+  const segs = splitSegments(command.length > 20_000 ? command.slice(0, 20_000) : command)
   const out: Analysis = { risk: 0, lines: [], backup: [], paths: [], hasGlob: false, irreversible: [], unknown: [] }
+  let secret = false
   for (const seg of segs) {
     const r = analyzeSegment(seg, ctx)
+    if (r.secret) secret = true
     if (!r.line) continue
     out.risk = Math.max(out.risk, r.risk) as Risk
-    out.lines.push(r.line.trim())
+    if (!out.lines.includes(r.line.trim())) out.lines.push(r.line.trim())
     for (const b of r.backup ?? []) if (!out.backup.includes(b)) out.backup.push(b)
     for (const p of r.targets ?? []) if (!out.paths.includes(p)) out.paths.push(p)
     if (r.irreversible) out.irreversible.push(r.irreversible)
     if (r.remote) out.remote = r.remote
     if (r.branchRef) out.branchRef = r.branchRef
     if (r.unknown) out.unknown.push(seg.text)
+  }
+  // Gizli bilgi okunup aynı komutta ağa gönderiliyorsa: sızdırma
+  if (secret && NETWORK.test(command)) {
+    out.risk = 4
+    out.lines.push(L(ctx, '🚨 Gizli bilgilerinizi okuyup internete/başka bir bilgisayara gönderebilir (veri sızdırma)!', '🚨 May read your secrets and send them over the network (exfiltration)!'))
+    out.irreversible.push(L(ctx, 'veri sızdırma', 'data exfiltration'))
   }
   out.hasGlob = out.backup.includes('project')
   if (out.lines.length === 0) out.lines.push(L(ctx, 'Komut çalıştırır.', 'Runs a command.'))
@@ -600,14 +686,59 @@ export function describe(a: Analysis, lang: Lang): string {
   return `${head} — ${body}${irr}`
 }
 
-/** Kullanıcı/ekip politika dosyası (.emniyet.json). */
+/** Politika dosyaları: kullanıcının ~/.emniyet/policy.json'u ve projenin .emniyet.json'u. */
 export type Policy = { block?: string[]; confirm?: string[]; allow?: string[]; note?: string }
 
-export function applyPolicy(command: string, policy: Policy | undefined): 'block' | 'confirm' | 'allow' | undefined {
-  if (!policy) return undefined
-  const hit = (list?: string[]) => (list ?? []).some(p => { try { return new RegExp(p, 'i').test(command) } catch { return command.includes(p) } })
-  if (hit(policy.block)) return 'block'
-  if (hit(policy.allow)) return 'allow'
-  if (hit(policy.confirm)) return 'confirm'
+function policyHit(command: string, list: unknown): boolean {
+  if (!Array.isArray(list)) return false
+  const subject = command.slice(0, 4000)
+  return list.slice(0, 200).some(p => {
+    if (typeof p !== 'string' || p.length === 0 || p.length > 200) return false
+    try { return new RegExp(p, 'i').test(subject) } catch { return subject.includes(p) }
+  })
+}
+
+/**
+ * Kullanıcı politikası her şeyi yapabilir; proje politikası (indirdiğiniz bir depodan gelebilir)
+ * yalnızca SIKILAŞTIRIR: "allow" kuralları yok sayılır, böylece kötü niyetli bir depo korumayı kapatamaz.
+ */
+export function applyPolicy(command: string, user: Policy | undefined, project?: Policy | undefined): 'block' | 'confirm' | 'allow' | undefined {
+  if (policyHit(command, user?.block) || policyHit(command, project?.block)) return 'block'
+  if (policyHit(command, user?.allow)) return 'allow'
+  if (policyHit(command, user?.confirm) || policyHit(command, project?.confirm)) return 'confirm'
   return undefined
+}
+
+// ───────────────────────── gizli bilgi maskeleme ─────────────────────────
+
+const SECRET_PATTERNS: [RegExp, string][] = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[ÖZEL ANAHTAR]'],
+  [/\b(AKIA|ASIA)[0-9A-Z]{16}\b/g, '[AWS-ANAHTARI]'],
+  [/\bsk-(ant-|proj-|live_|test_)?[A-Za-z0-9_-]{16,}/g, 'sk-•••'],
+  [/\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}/g, 'gh_•••'],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}/g, 'github_pat_•••'],
+  [/\bxox[abposr]-[A-Za-z0-9-]{10,}/g, 'xox-•••'],
+  [/\bglpat-[A-Za-z0-9_-]{16,}/g, 'glpat-•••'],
+  [/\bAIza[0-9A-Za-z_-]{30,}/g, 'AIza•••'],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[JWT]'],
+  [/(\bBearer\s+)[A-Za-z0-9._~+\/=-]{8,}/gi, '$1•••'],
+  [/(\/\/[^\s:\/@]+:)[^\s@\/]+(@)/g, '$1•••$2'],
+  [/(\b[A-Za-z0-9_]*(PASS(WORD|WD)?|SECRET|TOKEN|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|CREDENTIALS?|AUTH)[A-Za-z0-9_]*\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s'";&|]+)/gi, '$1•••'],
+  [/((?:^|\s)--?(password|passwd|pass|token|secret|api-key|apikey)(?:=|\s+))("[^"]*"|'[^']*'|\S+)/gi, '$1•••'],
+  [/(\bmysql\b[^|;&]*\s-p)(\S+)/g, '$1•••'],
+]
+
+/** Komut metnindeki parola/anahtar/jetonları maskeler (günlük, panel ve yapay zekâya gitmeden önce). */
+export function redact(text: string): string {
+  let out = text
+  for (const [re, rep] of SECRET_PATTERNS) out = out.replace(re, rep)
+  return out
+}
+
+/** Terminal kaçış dizilerini ve kontrol karakterlerini temizler (ekranı bozma/kandırma saldırılarına karşı). */
+export function sanitize(text: string): string {
+  return text
+    .replace(/\x1b\[[0-?]*[ -\/]*[@-~]/g, '')
+    .replace(/\x1b\][^\x07\x1b]*(\x07|\x1b\\)/g, '')
+    .replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, '')
 }

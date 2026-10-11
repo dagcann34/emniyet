@@ -3,12 +3,16 @@ export type Snap = {
   at: number
   cwd: string
   command: string
-  paths?: { file: string; list: string[] }
+  paths?: { file: string; list: string[]; sha?: string }
   project?: { dir: string; sha: string }
   gitHead?: { repo: string; sha: string; branch?: string }
   deletedBranch?: { name: string; sha: string }
   remote?: { name: string; branch: string; sha: string }
 }
+
+export type LimitWindow = { kind: string; percentUsed: number; resetsAt?: string }
+export type Limits = { windows: LimitWindow[]; at: number }
+export type Spend = { day: string; dayUsd: number; month: string; monthUsd: number }
 
 export type BackupState = 'saved' | 'none' | 'failed' | 'skipped'
 
@@ -30,6 +34,11 @@ declare module 'claude-code' {
     emniyet: {
       entries: Entry[]
       busy: string | null
+      limits: Limits | null
+      spend: Spend | null
+      lastCost: number | null
+      offUntil: number
+      bandHidden: boolean
     }
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "emniyet",
-  "version": "0.1.0",
-  "description": "Claude'un çalıştırdığı her komutu sade dille açıklar, riskliyse önce yedek alır ve tek tıkla geri alır. / Explains every command in plain words, backs up before risky ones, one-click undo.",
+  "version": "0.2.0",
+  "description": "Claude'un her komutunu sade dille açıklar, riskliyse sorar ve yedekler, tek tıkla geri alır; gizli bilgileri korur ve kullanım limitlerini kediyle gösterir. / Explains, guards, backs up and undoes Claude's commands; protects secrets; shows usage limits with a cat.",
   "author": {
     "name": "dagcann34"
   },
@@ -14,7 +14,11 @@
     "güvenlik",
     "geri-al",
     "open-source",
-    "free"
+    "free",
+    "security",
+    "secrets",
+    "rate-limits",
+    "usage"
   ],
   "types": "./types/index.d.ts",
   "userConfig": {
@@ -50,6 +54,36 @@
       "title": "Yedek boyut sınırı (MB)",
       "description": "Bundan büyük hedefler arşivlenmez",
       "default": 1024
+    },
+    "dailyBudgetUSD": {
+      "type": "number",
+      "title": "Günlük bütçe ($) / Daily budget",
+      "description": "Günlük tahmini harcama sınırı (0 = kapalı). Aboneliklerde gerçek ücret değildir.",
+      "default": 10
+    },
+    "monthlyBudgetUSD": {
+      "type": "number",
+      "title": "Aylık bütçe ($) / Monthly budget",
+      "description": "Aylık tahmini harcama sınırı (0 = kapalı).",
+      "default": 150
+    },
+    "showLimitBand": {
+      "type": "boolean",
+      "title": "Limit bandı / Limit band",
+      "description": "İstemin üstünde kedi ve limit çubuklarını göster",
+      "default": true
+    },
+    "guardSecretFiles": {
+      "type": "boolean",
+      "title": "Gizli dosya koruması / Secret-file guard",
+      "description": ".env, SSH anahtarı gibi dosyalar okunmadan/değiştirilmeden önce sor",
+      "default": true
+    },
+    "safetyPrompt": {
+      "type": "boolean",
+      "title": "Güvenli çalışma notu / Safety note",
+      "description": "Claude'a güvenli çalışma kurallarını hatırlat",
+      "default": true
     }
   },
   "homepage": "https://github.com/dagcann34/emniyet",
