@@ -15,7 +15,7 @@ async function paneHas($: any, re: RegExp, surface: 'terminal' | 'desktop' = 'te
 
 type World = { runs: string[][]; asked: string[]; ran: string[] }
 
-function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; answer?: 'yes' | 'no'; store?: Record<string, unknown>; projectPolicy?: unknown; sha?: string } = {}): World {
+function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; answer?: 'yes' | 'no'; store?: Record<string, unknown>; projectPolicy?: unknown; sha?: string; failTar?: boolean } = {}): World {
   const w: World = { runs: [], asked: [], ran: [] }
   mock.clock(on, { now: NOW })
   mock.store(on, { firstRun: opts.firstRun ?? NOW, ...(opts.store ?? {}) })
@@ -27,6 +27,7 @@ function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; ans
   on('fs.read', ($, e) => ({ value: e.path.endsWith('.emniyet.json') ? JSON.stringify(opts.projectPolicy) : '' }))
   on('process.run', ($, e) => {
     w.runs.push([...e.argv])
+    if (opts.failTar && e.argv[0] === 'tar') return { value: { exitCode: 1, stdout: '', stderr: 'tar: disk dolu', isStdoutTruncated: false, isStderrTruncated: false } }
     const out = e.argv[0] === 'shasum' || e.argv[0] === 'sha256sum' ? `${opts.sha ?? 'b'.repeat(64)}  file\n` : e.argv[0] === 'du' ? '12\t/x\n' : e.argv.includes('rev-parse') ? 'abc1234\n' : e.argv.includes('symbolic-ref') ? 'main\n' : ''
     return { value: { exitCode: 0, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
@@ -208,4 +209,29 @@ test('limitler: kedi ve çubuklar bantta, ayrıntı /emniyet-limit’te görün�
   expect(r.text).toContain('2s 15dk sonra yenilenir')
   expect(r.text).toContain('Haftalık')
   expect(r.text).toContain('$4.00 / $10')
+})
+
+// Fikir ve ilk sürüm: @didemkastan (PR #1)
+test('yedek gerçekten başarısız olursa sorulur; hayır denirse komut çalışmaz', async ($, on) => {
+  const w = world(on, { failTar: true, answer: 'no' })
+  const r = await $.tool.call({ tool: 'Bash', command: 'rm notlar.txt' })
+  expect(r.deny).toContain('yedek alamadı')
+  expect(w.asked.length).toBe(1)
+  expect(w.asked[0]).toContain('Yedek alınamadı')
+  expect(w.ran.length).toBe(0)
+  expect(w.runs.some(a => a[0] === 'tar')).toBe(true)
+})
+
+test('yedek başarısız olsa da kişi onaylarsa komut çalışır', async ($, on) => {
+  const w = world(on, { failTar: true, answer: 'yes' })
+  const r = await $.tool.call({ tool: 'Bash', command: 'rm notlar.txt' })
+  expect(r.deny).toBeUndefined()
+  expect(w.ran).toEqual(['rm notlar.txt'])
+})
+
+test('bilerek atlanan yedek (yeniden oluşturulabilir klasör) soru sormadan çalışır', async ($, on) => {
+  const w = world(on, { answer: 'no' })
+  await $.tool.call({ tool: 'Bash', command: 'rm node_modules' })
+  expect(w.asked.length).toBe(0)
+  expect(w.ran).toEqual(['rm node_modules'])
 })

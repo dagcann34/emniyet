@@ -48,6 +48,7 @@ Claude Code’da (terminalde) şunu yazın:
 |---|---|
 | 🗣️ **Açıklar** | Her komutu sade dille anlatır ve risk seviyesini gösterir: 🟢 güvenli · 🟡 orta · 🟠 yüksek · 🔴 kritik. Yüzü aşkın komut kalıbını internete çıkmadan tanır. Tanımadığı komutları isteğe bağlı olarak küçük bir modelle açıklar. |
 | ✋ **Sorar** | Orta ve üstü riskli komutlarda, Claude’un normal izin sorusunun yerine ne olacağını anlatan bir soru çıkar. |
+| ⚠️ **Yedek alınamazsa sorar** | Disk dolu ya da izin sorunu gibi bir nedenle yedek gerçekten alınamazsa komutu körlemesine çalıştırmaz: “Yedek alınamadı, yine de çalıştırılsın mı?” diye sorar. Bilerek atlanan yedekler (ör. `node_modules`) eskisi gibi çalışır. |
 | 💾 **Yedekler** | Silinecek ya da üzerine yazılacak dosyaları arşivler. `git reset --hard` gibi projenin tamamını etkileyen komutlarda proje klasörünün görüntüsünü ayrı bir “gölge” depoya alır; projenizin kendi git geçmişine dokunmaz. Git dallarını ve force push öncesi uzak dalı kaydeder. |
 | ⟲ **Geri alır** | `/emniyet` panelindeki **[Geri al]** düğmesi ya da `/emniyet-geri-al`. Geri almadan önce o anki durumun da yedeği alınır; geri almayı da geri alabilirsiniz. |
 | 🔑 **Gizli bilgileri korur** | `.env`, SSH anahtarları, bulut kimlikleri, parola kasası… Claude bunları okumak ya da değiştirmek isterse önce size sorar. Gizli bir dosyayı okuyup internete gönderen komutları **veri sızdırma** olarak durdurur. Komutlardaki parola ve jetonlar ekranda, günlükte ve yapay zekâya giden açıklamalarda `•••` ile maskelenir. |
@@ -110,6 +111,12 @@ Emniyet'in kendisi de saldırıya karşı sertleştirildi. Ayrıntılar ve açı
 - Sunucudaki veritabanları, bulut kaynakları, canlıya yayınlar ve `ssh` ile uzak sunucuda yapılanlar buradan yedeklenemez. Emniyet bunları ⛔ ile işaretler ve açıkça söyler.
 - `node_modules` gibi yeniden oluşturulabilen klasörler yedeklenmez.
 - Yedekler yalnızca kendi bilgisayarınızda (`~/.emniyet`) tutulur. Emniyet, gerçek yedeklerinizin yerine geçmez.
+
+## Katkıda bulunanlar
+
+- [@didemkastan](https://github.com/didemkastan): “Yedek alınamazsa riskli komutu çalıştırma” fikri ve ilk uygulaması ([#1](https://github.com/dagcann34/emniyet/pull/1)). v0.2.1’de onay sorusu olarak uyarlandı.
+
+Katkılarınızı bekliyoruz. Yeni komut kuralları için `hooks/rules.ts`, testler için `tests/` klasörüne bakın.
 
 ## Geliştirme
 

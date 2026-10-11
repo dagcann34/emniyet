@@ -76,7 +76,8 @@ export function newId(now: number): string {
   return now.toString(36).slice(-5) + r
 }
 
-export type SnapResult = { snap?: Snap; notes: string[]; sizeKB: number }
+/** `failed`: bir yedek adımı gerçekten başarısız oldu (bilerek atlanan yedekler buna girmez). */
+export type SnapResult = { snap?: Snap; notes: string[]; sizeKB: number; failed: boolean }
 
 type T = (tr: string, en: string) => string
 
@@ -98,6 +99,7 @@ export async function takeSnapshot(
   const snap: Snap = { id: ctx.id, at: ctx.now, cwd: ctx.cwd, command: ctx.command }
   let sizeKB = 0
   let did = false
+  let failed = false
 
   // 1) Hedef dosyalar → tar.gz
   if (a.backup.includes('paths') && a.paths.length > 0) {
@@ -122,6 +124,7 @@ export async function takeSnapshot(
           sizeKB += kb
           did = true
         } else {
+          failed = true
           notes.push(t('Dosya yedeği alınamadı: ', 'File backup failed: ') + r.stderr.trim().slice(0, 160))
         }
       }
@@ -147,6 +150,7 @@ export async function takeSnapshot(
         snap.project = { dir, sha: head.stdout.trim() }
         did = true
       } else {
+        failed = true
         notes.push(t('Proje yedeği alınamadı: ', 'Project backup failed: ') + (add.stderr || commit.stderr || head.stderr).trim().slice(0, 160))
       }
     } else {
@@ -190,12 +194,13 @@ export async function takeSnapshot(
         snap.remote = { name: a.remote.name, branch, sha }
         did = true
       } else {
+        failed = true
         notes.push(t('Uzak dalın eski hâli okunamadı.', 'Couldn’t read the remote branch’s previous state.'))
       }
     }
   }
 
-  return did ? { snap, notes, sizeKB } : { notes, sizeKB }
+  return did ? { snap, notes, sizeKB, failed } : { notes, sizeKB, failed }
 }
 
 export type RestoreResult = { ok: boolean; notes: string[] }
@@ -835,7 +840,25 @@ export const register: Register = (on, options) => {
         await bump($, 'backups')
         backup = 'saved'
       } else {
-        backup = r.notes.length ? 'skipped' : 'failed'
+        backup = r.failed ? 'failed' : 'skipped'
+      }
+      // Yedek GERÇEKTEN başarısız olduysa (bilerek atlanmadıysa) komutu körlemesine çalıştırma: kişiye sor.
+      // Fikir: @didemkastan, PR #1. Soru sorulamıyorsa (başsız çalışma) komut durdurulur.
+      if (r.failed) {
+        const yes = t('Evet, yedeksiz çalıştır', 'Yes, run without backup')
+        let answer = ''
+        try {
+          answer = await $.ui.ask(
+            `⚠️ ${t('Yedek alınamadı', 'Backup failed')}${r.snap ? t(' (kısmen)', ' (partly)') : ''}:\n${r.notes.map(n => `• ${sanitize(n)}`).join('\n')}\n\n$ ${shown.length > 200 ? shown.slice(0, 200) + '…' : shown}\n\n${t('Bu komut geri alınamayabilir. Yine de çalıştırılsın mı?', 'This command may not be undoable. Run it anyway?')}`,
+            { header: 'Emniyet', options: [yes, t('Hayır, durdur', 'No, stop')] })
+        } catch { answer = '' }
+        await audit($, ctx.home, { at: new Date(now).toISOString(), type: 'backup-failed', id, command: shown, cwd: ctx.cwd, risk: a.risk, proceeded: answer === yes })
+        if (answer !== yes) {
+          await bump($, 'blocked')
+          await addEntry($, { id, at: now, command: shown, risk: a.risk, explanation, backup, notes: [...notes, t('Yedek alınamadığı için durduruldu.', 'Stopped because the backup failed.')], outcome: 'cancelled' })
+          return { deny: t('Emniyet bu komuttan önce yedek alamadı ve kullanıcı yedeksiz çalıştırmayı onaylamadı. Önce yedek sorununu (disk alanı, izinler) çözün ya da daha güvenli bir yol önerin.', 'Emniyet could not back up before this command and the user did not approve running it without a backup. Fix the backup problem (disk space, permissions) first or suggest a safer way.') }
+        }
+        notes.push(t('Kullanıcı yedeksiz çalıştırmayı onayladı.', 'The user approved running without a backup.'))
       }
     }
 

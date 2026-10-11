@@ -1,6 +1,6 @@
 {
   "name": "emniyet",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Claude'un her komutunu sade dille açıklar, riskliyse sorar ve yedekler, tek tıkla geri alır; gizli bilgileri korur ve kullanım limitlerini kediyle gösterir. / Explains, guards, backs up and undoes Claude's commands; protects secrets; shows usage limits with a cat.",
   "author": {
     "name": "dagcann34"
