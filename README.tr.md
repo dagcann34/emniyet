@@ -34,17 +34,25 @@ Bu gerçek bir oturum: Claude `.env` içindeki Stripe anahtarını yazdırmadı,
 
 ## Kurulum
 
-Claude Code’da (terminalde) şunu yazın:
+Terminalde (Claude Code'un içinde değil) şu iki komutu çalıştırın:
+
+```bash
+claude plugin marketplace add dagcann34/emniyet
+claude plugin install emniyet@emniyet
+```
+
+Ya da Claude Code oturumunun içinde şunu yazın:
 
 ```
-/plugin install emniyet --marketplace dagcann34/emniyet
+/plugin marketplace add dagcann34/emniyet
+/plugin install emniyet@emniyet
 ```
 
-`Add marketplace?` sorusuna `y` yazın, ardından kapsamı (önerilen: user) seçin. Bu kadar; bir sonraki komuttan itibaren Emniyet devrede.
+Bu kadar; bir sonraki Claude Code oturumunda Emniyet devrede.
 
 Arayüz sistem dilinizi kendiliğinden izler (Türkçe → Türkçe, diğerleri → İngilizce). İsterseniz `/config` → emniyet → `language` ile sabitleyebilirsiniz.
 
-**Güncelleme:** `/plugin marketplace update emniyet`, ardından Claude Code'u yeniden başlatın.
+**Güncelleme:** `claude plugin marketplace update emniyet`, ardından Claude Code'u yeniden başlatın.
 
 ## Ne yapar?
 

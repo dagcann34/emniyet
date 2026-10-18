@@ -34,17 +34,25 @@ These are real Claude Code sessions, not mockups.
 
 ## Install
 
-In Claude Code (in your terminal), type:
+In your terminal (not inside Claude Code), run these two commands:
+
+```bash
+claude plugin marketplace add dagcann34/emniyet
+claude plugin install emniyet@emniyet
+```
+
+Or, inside a Claude Code session, type:
 
 ```
-/plugin install emniyet --marketplace dagcann34/emniyet
+/plugin marketplace add dagcann34/emniyet
+/plugin install emniyet@emniyet
 ```
 
-Answer `y` to `Add marketplace?`, then pick a scope (recommended: **user**). That's it — Emniyet is active from the next command.
+That's it — Emniyet is active in your next Claude Code session.
 
 The interface follows your system language automatically (Turkish → Turkish, anything else → English). You can pin it under `/config` → emniyet → `language`.
 
-**Update:** `/plugin marketplace update emniyet`, then restart Claude Code.
+**Update:** `claude plugin marketplace update emniyet`, then restart Claude Code.
 
 ## What it does
 
