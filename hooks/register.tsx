@@ -311,6 +311,12 @@ const allowedSecretFiles = new Set<string>()
 /** Bu yüklemede gösterilmiş limit uyarıları (aynı eşik için tekrar tekrar uyarmamak için). */
 const alerted = new Set<string>()
 
+/** Yüzde: Türkçede %83, İngilizcede 83%. */
+function pct(n: number): string {
+  const v = Math.round(n)
+  return cfg.lang === 'tr' ? `%${v}` : `${v}%`
+}
+
 function t(tr: string, en: string): string {
   return cfg.lang === 'tr' ? tr : en
 }
@@ -322,7 +328,18 @@ function safeText(s: string): string {
 
 // ───────────── yardımcılar ─────────────
 
+/** language: "auto" — sistem dili (LANG / LC_ALL / LC_MESSAGES) Türkçe ise tr, değilse en. */
+let autoLang = false
+let langResolved = false
+async function resolveLang($: Dollar): Promise<void> {
+  if (!autoLang || langResolved) return
+  langResolved = true
+  const loc = (await $.env.get('LC_ALL')) || (await $.env.get('LC_MESSAGES')) || (await $.env.get('LANG')) || ''
+  cfg.lang = /^tr([_.-]|$)/i.test(loc) ? 'tr' : 'en'
+}
+
 async function ctxOf($: Dollar) {
+  await resolveLang($)
   const cwd = await $.session.cwd()
   const home = (await $.env.get('HOME')) ?? '/'
   return { cwd, home, lang: cfg.lang }
@@ -404,13 +421,23 @@ async function aiDescribe($: Dollar, command: string): Promise<{ text: string; r
 async function undo($: Dollar, id: string | undefined, interactive: boolean): Promise<string> {
   if (id !== undefined && !SNAP_ID.test(id)) return t('Geçersiz kimlik.', 'Invalid id.')
   const snaps = await loadSnaps($)
-  const snap = id ? snaps.find(s => s.id === id) : [...snaps].reverse().find(s => !s.command.startsWith('⟲'))
-  if (!snap) return t('Geri alınacak bir yedek bulunamadı.', 'No backup found to undo.')
+  // Kimlik verilmezse yalnızca BU projenin (şu anki klasörün) son yedeği seçilir;
+  // başka bir projede ya da oturumda alınmış yedek asla kendiliğinden geri yüklenmez.
+  const here = (await ctxOf($)).cwd
+  const sameProject = (s: Snap) => s.cwd === here || here.startsWith(s.cwd + '/') || s.cwd.startsWith(here + '/')
+  const snap = id ? snaps.find(s => s.id === id) : [...snaps].reverse().find(s => !s.command.startsWith('⟲') && sameProject(s))
+  if (!snap) {
+    const elsewhere = id ? 0 : snaps.filter(s => !sameProject(s)).length
+    return t('Bu projede geri alınacak bir yedek bulunamadı.', 'No backup to undo in this project.') +
+      (elsewhere ? t(` Başka klasörlerde ${elsewhere} yedek var; /emniyet panelinden ya da /emniyet-geri-al <id> ile seçebilirsiniz.`, ` There are ${elsewhere} backup(s) from other folders; pick one from the /emniyet pane or with /emniyet-undo <id>.`) : '')
+  }
+  const otherFolder = !sameProject(snap)
   if (interactive) {
     let answer: string
     try {
       answer = await $.ui.ask(
-        t(`“${safeText(snap.command).slice(0, 80)}” komutundan önceki hâle dönülsün mü?`, `Restore to before “${safeText(snap.command).slice(0, 80)}”?`),
+        t(`“${safeText(snap.command).slice(0, 80)}” komutundan önceki hâle dönülsün mü?`, `Restore to before “${safeText(snap.command).slice(0, 80)}”?`) +
+          (otherFolder ? t(`\n⚠️ Bu yedek başka bir klasöre ait: ${snap.cwd}`, `\n⚠️ This backup belongs to another folder: ${snap.cwd}`) : ''),
         { header: 'Emniyet', options: [t('Evet, geri al', 'Yes, undo'), t('Vazgeç', 'Cancel')] })
     } catch {
       return t('Geri alma iptal edildi.', 'Undo cancelled.')
@@ -541,7 +568,7 @@ function alertOnce($: Dollar, key: string, text: string) {
 }
 
 async function limitText($: Dollar, arg: string): Promise<string> {
-  if (arg === 'gizle' || arg === 'hide') { await update($, bandHiddenA, () => true); return t('Limit bandı gizlendi. Geri getirmek için: /emniyet-limit goster', 'Limit band hidden. Show again: /emniyet-limit show') }
+  if (arg === 'gizle' || arg === 'hide') { await update($, bandHiddenA, () => true); return t('Limit bandı gizlendi. Geri getirmek için: /emniyet-limit goster', 'Limit band hidden. Show again: /emniyet-limits show') }
   if (arg === 'goster' || arg === 'göster' || arg === 'show') { await update($, bandHiddenA, () => false); return t('Limit bandı gösteriliyor.', 'Limit band shown.') }
   const gs = await gauges($)
   const claude = gs.filter(g => g.key !== 'day' && g.key !== 'month')
@@ -551,7 +578,7 @@ async function limitText($: Dollar, arg: string): Promise<string> {
     `### ${cat.face}  ${t('Emniyet kedisi', 'Emniyet cat')}: ${cat.mood}`,
     '',
     claude.length === 0 ? t('_Claude henüz limit bilgisi göndermedi (abonelik dışı kullanım ya da ilk yanıttan önce)._', '_No limit reading from Claude yet (not on a subscription, or before the first reply)._') : '',
-    ...gs.map(g => { const b = bar(g.left, 20); return `- **${g.label}**: \`${b.full}${b.empty}\` %${Math.round(g.left)} ${t('kaldı', 'left')}${g.detail ? ` · ${g.detail}` : ''}` }),
+    ...gs.map(g => { const b = bar(g.left, 20); return `- **${g.label}**: \`${b.full}${b.empty}\` ${pct(g.left)} ${t('kaldı', 'left')}${g.detail ? ` · ${g.detail}` : ''}` }),
     '',
     t('_Günlük ve aylık bütçe, Claude Code’un gösterdiği tahmini maliyetten hesaplanır; aboneliklerde bu gerçek bir ücret değildir. Bütçeyi /config → emniyet altından değiştirebilirsiniz._', '_Daily and monthly budgets use Claude Code’s estimated cost; on subscriptions this is not an actual charge. Change them under /config → emniyet._'),
   ]
@@ -583,7 +610,7 @@ async function reportText($: Dollar): Promise<string> {
 export const register: Register = (on, options) => {
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : d)
   cfg = {
-    lang: options.language === 'en' ? 'en' : 'tr',
+    lang: options.language === 'tr' ? 'tr' : 'en',
     confirmFrom: options.confirmFrom === 'never' ? 99 : options.confirmFrom === 'critical' ? 4 : 3,
     aiExplain: options.aiExplain !== false,
     maxMB: num(options.maxBackupMB, 1024) || 1024,
@@ -593,17 +620,23 @@ export const register: Register = (on, options) => {
     safetyPrompt: options.safetyPrompt !== false,
     guardFiles: options.guardSecretFiles !== false,
   }
-  const lang = cfg.lang
+  autoLang = options.language !== 'tr' && options.language !== 'en'
+  langResolved = false
   const confirmFrom = cfg.confirmFrom
   const aiExplain = cfg.aiExplain
 
   // ───────────── oturum başlangıcı ─────────────
 
   on('session.start', async ($, e, next) => {
+    await resolveLang($)
     await $.command.register({ name: 'emniyet', description: t('Emniyet panelini aç/kapat · ac | kapat [dk] | limit | rapor | yardim', 'Toggle the Emniyet pane · on | off [min] | limits | report | help'), argumentHint: t('[ac|kapat|limit|rapor|yardim]', '[on|off|limits|report|help]') })
     await $.command.register({ name: 'emniyet-geri-al', description: t('Son riskli komutu (ya da verilen kimliği) geri al', 'Undo the last risky command (or a given id)'), argumentHint: '[id] [-y]' })
     await $.command.register({ name: 'emniyet-rapor', description: t('Emniyet’in seni kaç kez koruduğunu ve son kayıtları göster', 'Show how often Emniyet protected you and recent records') })
     await $.command.register({ name: 'emniyet-limit', description: t('Claude kullanım limitlerini ve bütçeni göster; bandı aç/kapat', 'Show Claude usage limits and budget; toggle the band') })
+    // English aliases (same behaviour)
+    await $.command.register({ name: 'emniyet-undo', description: t('= /emniyet-geri-al (İngilizce ad)', 'Undo the last risky command in this project (or a given id)'), argumentHint: '[id] [-y]' })
+    await $.command.register({ name: 'emniyet-limits', description: t('= /emniyet-limit (İngilizce ad)', 'Show Claude usage limits and budget; toggle the band'), argumentHint: '[hide|show]' })
+    await $.command.register({ name: 'emniyet-report', description: t('= /emniyet-rapor (İngilizce ad)', 'Show how often Emniyet protected you and recent records') })
     $.ui.status((await isOn($)) ? t('🛡 Emniyet açık · /emniyet', '🛡 Emniyet on · /emniyet') : t('🛡 Emniyet geçici olarak KAPALI · /emniyet ac', '🛡 Emniyet temporarily OFF · /emniyet on'))
     return next(e)
   })
@@ -611,6 +644,7 @@ export const register: Register = (on, options) => {
   // ───────────── Claude'a güvenli çalışma notu ─────────────
 
   on('prompt.compose', async ($, e, next) => {
+    await resolveLang($)
     const res = await next(e)
     if (!cfg.safetyPrompt) return res
     return {
@@ -622,7 +656,7 @@ export const register: Register = (on, options) => {
           '- Prefer reversible operations: move to trash instead of rm -rf, git stash before git reset --hard, scope deletions narrowly, never run commands you have not explained.',
           '- Never print, cat, echo or upload secrets (.env, SSH keys, cloud credentials, tokens). Do not put passwords on the command line; read them from environment variables.',
           '- Do not add persistence (shell rc files, launch agents, cron) unless the user explicitly asked.',
-          '- If the user lost work, tell them about /emniyet-geri-al and the emniyet:kurtarma skill.',
+          `- If the user lost work, tell them about ${cfg.lang === 'tr' ? '/emniyet-geri-al' : '/emniyet-undo'} and the emniyet:recovery skill.`,
           `- Answer the user in ${cfg.lang === 'tr' ? 'Turkish' : 'their language'} unless they write otherwise.`,
         ].join('\n'),
       }],
@@ -632,6 +666,7 @@ export const register: Register = (on, options) => {
   // ───────────── komutlar ─────────────
 
   on('command.run', { command: 'emniyet' }, async ($, e) => {
+    await resolveLang($)
     const [sub = '', arg = ''] = e.args.trim().toLowerCase().split(/\s+/)
     if (sub === 'kapat' || sub === 'off') {
       if (!isHuman(e.origin)) return { text: t('Koruma yalnızca sizin yazdığınız bir komutla kapatılabilir.', 'Protection can only be turned off by a command you type.') }
@@ -649,8 +684,8 @@ export const register: Register = (on, options) => {
     if (sub === 'yardim' || sub === 'yardım' || sub === 'help') {
       return {
         text: t(
-          '## 🛡 Emniyet komutları\n- `/emniyet` — paneli aç/kapat\n- `/emniyet kapat [dk]` — korumayı en fazla 60 dk kapat (kendiliğinden açılır)\n- `/emniyet ac` — korumayı hemen aç\n- `/emniyet-geri-al [id] [-y]` — son riskli komutu geri al\n- `/emniyet-limit [gizle|goster]` — kullanım limitleri ve bütçe\n- `/emniyet-rapor` — özet\n\nSkill’ler: `emniyet:guvenli-calisma`, `emniyet:kurtarma`, `emniyet:guvenlik-taramasi`',
-          '## 🛡 Emniyet commands\n- `/emniyet` — toggle the pane\n- `/emniyet off [min]` — turn protection off for up to 60 min (turns back on by itself)\n- `/emniyet on` — turn protection on now\n- `/emniyet-geri-al [id] [-y]` — undo the last risky command\n- `/emniyet-limit [hide|show]` — usage limits and budget\n- `/emniyet-rapor` — summary\n\nSkills: `emniyet:guvenli-calisma`, `emniyet:kurtarma`, `emniyet:guvenlik-taramasi`'),
+          '## 🛡 Emniyet komutları\n- `/emniyet` — paneli aç/kapat\n- `/emniyet kapat [dk]` — korumayı en fazla 60 dk kapat (kendiliğinden açılır)\n- `/emniyet ac` — korumayı hemen aç\n- `/emniyet-geri-al [id] [-y]` — son riskli komutu geri al\n- `/emniyet-limit [gizle|goster]` — kullanım limitleri ve bütçe\n- `/emniyet-rapor` — özet\n\nİngilizce adlar da çalışır: `/emniyet-undo`, `/emniyet-limits`, `/emniyet-report`, `/emniyet off|on`.\n\nSkill’ler: `emniyet:safe-work`, `emniyet:recovery`, `emniyet:security-scan`',
+          '## 🛡 Emniyet commands\n- `/emniyet` — toggle the pane\n- `/emniyet off [min]` — turn protection off for up to 60 min (turns back on by itself)\n- `/emniyet on` — turn protection on now\n- `/emniyet-undo [id] [-y]` — undo the last risky command in this project\n- `/emniyet-limits [hide|show]` — usage limits and budget\n- `/emniyet-report` — summary\n\nTurkish names work too: `/emniyet-geri-al`, `/emniyet-limit`, `/emniyet-rapor`, `/emniyet kapat|ac`.\n\nSkills: `emniyet:safe-work`, `emniyet:recovery`, `emniyet:security-scan`'),
       }
     }
     // Varsayılan: paneli aç / kapat
@@ -663,21 +698,29 @@ export const register: Register = (on, options) => {
     return { text: t('Emniyet paneli açıldı.', 'Emniyet pane opened.') }
   })
 
-  on('command.run', { command: 'emniyet-geri-al' }, async ($, e) => {
-    // /emniyet-geri-al [id] [-y]  — -y: onay sormadan (betikler ve claude -p için)
-    const parts = e.args.trim().split(/\s+/).filter(Boolean)
-    const yes = parts.some(p => p === '-y' || p === '--evet' || p === '--yes')
-    const id = parts.find(p => !p.startsWith('-'))
-    return { text: await undo($, id, !yes) }
-  })
+  for (const command of ['emniyet-geri-al', 'emniyet-undo']) {
+    on('command.run', { command }, async ($, e) => {
+      await resolveLang($)
+      // /emniyet-geri-al [id] [-y]  — -y: onay sormadan (betikler ve claude -p için)
+      const parts = e.args.trim().split(/\s+/).filter(Boolean)
+      const yes = parts.some(p => p === '-y' || p === '--evet' || p === '--yes')
+      const id = parts.find(p => !p.startsWith('-'))
+      return { text: await undo($, id, !yes) }
+    })
+  }
 
-  on('command.run', { command: 'emniyet-limit' }, async ($, e) => ({ text: await limitText($, e.args.trim().toLowerCase()) }))
+  for (const command of ['emniyet-limit', 'emniyet-limits']) {
+    on('command.run', { command }, async ($, e) => { await resolveLang($); return { text: await limitText($, e.args.trim().toLowerCase()) } })
+  }
 
-  on('command.run', { command: 'emniyet-rapor' }, async $ => ({ text: await reportText($) }))
+  for (const command of ['emniyet-rapor', 'emniyet-report']) {
+    on('command.run', { command }, async $ => { await resolveLang($); return { text: await reportText($) } })
+  }
 
   // ───────────── kullanım ölçümü: limitler ve bütçe ─────────────
 
   on('session.measure', async ($, e, next) => {
+    await resolveLang($)
     const now = await $.clock.now()
     if (e.changed.includes('rateLimits')) {
       await update($, limitsA, () => ({ windows: e.rateLimits.map(w => ({ kind: w.kind, percentUsed: w.percentUsed, ...(w.resetsAt ? { resetsAt: w.resetsAt } : {}) })), at: now }))
@@ -726,7 +769,7 @@ export const register: Register = (on, options) => {
     const command = (e.input as { command?: unknown } | undefined)?.command
     if (typeof command !== 'string') return res
     const a = analyze(command, await ctxOf($))
-    return { ...res, reason: `🛡 Emniyet: ${safeText(describe(a, lang))}` }
+    return { ...res, reason: `🛡 Emniyet: ${safeText(describe(a, cfg.lang))}` }
   }).catch(($, e, next) => next(e))
 
   // ───────────── gizli dosyalar: Read / Edit / Write ─────────────
@@ -784,7 +827,7 @@ export const register: Register = (on, options) => {
       }
     }
 
-    const explanation = safeText(describe(a, lang))
+    const explanation = safeText(describe(a, cfg.lang))
     const id = newId(now)
     await bump($, 'commands')
     if (a.risk >= 2) await bump($, 'risky')
@@ -810,7 +853,7 @@ export const register: Register = (on, options) => {
     if (needsConfirm) {
       const yes = t('Evet, çalıştır', 'Yes, run it')
       const backupLine = a.risk >= 2 && a.backup.length > 0
-        ? t('💾 Çalıştırmadan önce yedek alınacak; /emniyet-geri-al ile geri alabilirsiniz.', '💾 A backup is taken first; undo with /emniyet-geri-al.')
+        ? t('💾 Çalıştırmadan önce yedek alınacak; /emniyet-geri-al ile geri alabilirsiniz.', '💾 A backup is taken first; undo with /emniyet-undo.')
         : a.irreversible.length ? '' : t('ℹ️ Bu komut için yedek gerekmiyor.', 'ℹ️ No backup needed for this command.')
       let answer = ''
       try {
@@ -867,8 +910,8 @@ export const register: Register = (on, options) => {
     $.ui.status(`🛡 ${RISK_ICON[a.risk]} ${short.length > 90 ? short.slice(0, 89) + '…' : short}${backup === 'saved' ? t(' · yedek ✓', ' · backup ✓') : ''}`)
     if (a.risk >= 3) {
       $.ui.toast(backup === 'saved'
-        ? t(`${RISK_ICON[a.risk]} Riskli komut — yedek alındı. Geri almak için /emniyet-geri-al`, `${RISK_ICON[a.risk]} Risky command — backed up. Undo with /emniyet-geri-al`)
-        : `${RISK_ICON[a.risk]} ${RISK_LABEL[lang][a.risk]}`)
+        ? t(`${RISK_ICON[a.risk]} Riskli komut — yedek alındı. Geri almak için /emniyet-geri-al`, `${RISK_ICON[a.risk]} Risky command — backed up. Undo with /emniyet-undo`)
+        : `${RISK_ICON[a.risk]} ${RISK_LABEL[cfg.lang][a.risk]}`)
     }
 
     const ran = await next(e)
@@ -890,6 +933,7 @@ export const register: Register = (on, options) => {
   // ───────────── istem üstü bant: kedi + limit çubukları ─────────────
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    await resolveLang($)
     if (!cfg.showBand || e.props.hasSurvey || (await read($, bandHiddenA))) return next(e)
     const gs = await gauges($)
     const claude = gs.filter(g => g.key !== 'day' && g.key !== 'month')
@@ -911,7 +955,7 @@ export const register: Register = (on, options) => {
               <Text dimColor>{g.label} </Text>
               <Text color={b.color}>{b.full}</Text>
               <Text dimColor>{b.empty}</Text>
-              <Text> %{Math.round(g.left)}</Text>
+              <Text> {pct(g.left)}</Text>
             </Text>
           )
         })}
@@ -922,6 +966,7 @@ export const register: Register = (on, options) => {
   // ───────────── panel ─────────────
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    await resolveLang($)
     const { Box, Text, Button } = $.ui.resolve(e)
     const list = await read($, entriesA)
     const busy = await read($, busyA)
@@ -970,13 +1015,13 @@ export const register: Register = (on, options) => {
             return (
               <Box key={`pg-${g.key}`} flexDirection="column">
                 <Text>
-                  <Text>{g.label.padEnd(14)}</Text>
+                  <Text>{g.label.padEnd(16)}</Text>
                   <Text color={b.color}>{b.full}</Text>
                   <Text dimColor>{b.empty}</Text>
-                  <Text bold> %{Math.round(g.left)}</Text>
+                  <Text bold> {pct(g.left)}</Text>
                   <Text dimColor> {t('kaldı', 'left')}</Text>
                 </Text>
-                {g.detail !== '' && <Text dimColor>{'              '}{g.detail}</Text>}
+                {g.detail !== '' && <Text dimColor>{'                '}{g.detail}</Text>}
               </Box>
             )
           })}
@@ -1015,7 +1060,7 @@ export const register: Register = (on, options) => {
           </Box>
         ))}
         <Box marginTop={1}>
-          <Text dimColor wrap="wrap">{t('/emniyet yardim · /emniyet-geri-al · /emniyet-limit · /emniyet-rapor', '/emniyet help · /emniyet-geri-al · /emniyet-limit · /emniyet-rapor')}</Text>
+          <Text dimColor wrap="wrap">{t('/emniyet yardim · /emniyet-geri-al · /emniyet-limit · /emniyet-rapor', '/emniyet help · /emniyet-undo · /emniyet-limits · /emniyet-report')}</Text>
         </Box>
       </Box>
     )

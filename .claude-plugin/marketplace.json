@@ -7,8 +7,8 @@
     {
       "name": "emniyet",
       "source": "./",
-      "description": "Komutları sade dille açıklar, riskliyse yedek alır, tek tıkla geri alır."
+      "description": "Explains commands in plain language, backs up before risky ones, undoes with one command. English & Turkish."
     }
   ],
-  "description": "Emniyet: Claude Code için güvenlik ağı — açıklama, yedek, tek tıkla geri alma."
+  "description": "Emniyet: a safety net for Claude Code — plain-language explanations, backups before risky commands, one-command undo."
 }

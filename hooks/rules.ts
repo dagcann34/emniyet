@@ -312,10 +312,13 @@ function analyzeSegment(seg: { text: string; pipedFrom?: string }, ctx: Ctx): Se
   // Dosyanın üzerine yazan yönlendirme: komut > dosya
   const overwrite = redirects.filter(r => (r.op === '>' || r.op === '>|' || r.op === '&>') && r.target !== '/dev/null' && !/^\/dev\/(stdout|stderr|tty)/.test(r.target))
   if (overwrite.length > 0) {
-    const targets = overwrite.map(r => resolvePath(r.target, ctx))
+    const literal = overwrite.filter(r => !isGlob(r.target))
+    const targets = literal.map(r => resolvePath(r.target, ctx))
+    const named = overwrite.filter(r => isGlob(r.target)).map(r => `“${r.target}”`)
+    const where = [showPaths(targets, ctx), ...named].filter(Boolean).join(', ')
     const line = L(ctx,
-      ` Çıktı ${showPaths(targets, ctx)} dosyasına yazılır; dosya varsa eski içeriği silinir.`,
-      ` Output is written to ${showPaths(targets, ctx)}; any existing content is replaced.`)
+      ` Çıktı ${where} dosyasına yazılır; dosya varsa eski içeriği silinir.`,
+      ` Output is written to ${where}; any existing content is replaced.`)
     result.line += line
     result.risk = Math.max(result.risk, 2) as Risk
     result.backup = [...new Set([...(result.backup ?? []), 'paths' as const])]

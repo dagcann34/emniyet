@@ -1,141 +1,139 @@
-<p align="center"><img src="docs/0-kapak.png" width="560" alt="Emniyet — Claude Code için güvenlik ağı"></p>
+<p align="center"><img src="docs/en/0-cover.png" width="560" alt="Emniyet — a safety net for Claude Code"></p>
 
-# 🛡 Emniyet — Claude Code için güvenlik ağı
+<p align="center"><b>English</b> · <a href="README.tr.md">Türkçe</a></p>
 
-**Ücretsiz ve açık kaynak.** Claude’un çalıştırdığı her komutu sade Türkçeyle açıklar. Komut riskliyse önce sorar ve çalıştırmadan önce yedek alır. Bir şey ters giderse tek komutla geri alırsınız. Gizli bilgilerinizi korur, kullanım limitlerinizi de turuncu bir kediyle gösterir. 🐱
+# 🛡 Emniyet — a safety net for Claude Code
 
-> *English summary below.*
+**Free and open source (MIT).** Emniyet (Turkish for *safety*) explains every shell command Claude runs in plain language. If a command is risky, it asks first and **takes a backup before it runs**. If something goes wrong, you **undo it with one command**. It also guards your secrets and shows your Claude usage limits with a little orange cat. 🐱
 
-Yapay zekâ ajanları artık gerçek bilgisayarlarda, gerçek projelerde komut çalıştırıyor. `rm -rf`, `git reset --hard`, `git push --force`, veritabanı sıfırlama… Bunların çoğu geri alınamaz. Kod bilmeyen biri de “Yes”e bastığı komutun ne yaptığını çoğu zaman bilmez. Emniyet bu iki sorunu birlikte çözer.
+AI agents now run commands on real computers, in real projects: `rm -rf`, `git reset --hard`, `git push --force`, database resets… Most of these can't be undone, and people who don't code often have no idea what they just said "Yes" to. Emniyet fixes both problems at once.
 
-## Nasıl görünüyor?
+## What it looks like
 
-**1. Riskli bir komuttan önce ne olacağını sade dille anlatır ve onayınızı ister**
+These are real Claude Code sessions, not mockups.
 
-![Onay diyaloğu](docs/1-onay.png)
+**1. Before a risky command, it tells you what will happen in plain words and asks**
 
-**2. Claude “geri getirilemez” dese bile…**
+![Confirmation dialog](docs/en/1-confirm.png)
 
-![Claude geri getirilemez diyor](docs/2-geri-getirilemez.png)
+**2. Even when Claude says “it can't be recovered”…**
 
-**3. …Emniyet çalıştırmadan önce yedek almıştı. `/emniyet` paneli her riskli komutu, açıklamasını ve yedeğini gösterir**
+![Claude says it can't be recovered](docs/en/2-cant-recover.png)
 
-![Emniyet paneli](docs/3-panel.png)
+**3. …Emniyet took a backup before the command ran. The `/emniyet` pane shows every risky command, what it did, its backup, and your usage limits**
 
-**4. `/emniyet-geri-al` ile tek komutta geri gelir**
+![Emniyet pane](docs/en/3-pane.png)
 
-![Geri alındı](docs/4-geri-alindi.png)
+**4. One command brings it back: `/emniyet-undo` (Turkish name: `/emniyet-geri-al`, shown here)**
 
-**5. Gizli bilgiler korunur, kullanım limitleri kediyle görünür**
+![Undone](docs/en/4-undone.png)
 
-![Panel, limitler ve kedi](docs/5-panel-limitler.png)
+**5. Your Claude limits and your own budget, with a cat whose mood follows what's left**
 
-Bu gerçek bir oturum: Claude `.env` içindeki Stripe anahtarını yazdırmadı, `rm -rf` yerine klasörü yedeğe taşıdı. Sağdaki panelde Claude'un 5 saatlik ve haftalık limitlerinden ne kadar kaldığı, istemin üstündeki bantta da turuncu kedi görünüyor.
+![Limits](docs/en/5-limits.png)
 
-## Kurulum
+## Install
 
-Claude Code’da (terminalde) şunu yazın:
+In Claude Code (in your terminal), type:
 
 ```
 /plugin install emniyet --marketplace dagcann34/emniyet
 ```
 
-`Add marketplace?` sorusuna `y` yazın, ardından kapsamı (önerilen: user) seçin. Bu kadar; bir sonraki komuttan itibaren Emniyet devrede.
+Answer `y` to `Add marketplace?`, then pick a scope (recommended: **user**). That's it — Emniyet is active from the next command.
 
-## Ne yapar?
+The interface follows your system language automatically (Turkish → Turkish, anything else → English). You can pin it under `/config` → emniyet → `language`.
+
+**Update:** `/plugin marketplace update emniyet`, then restart Claude Code.
+
+## What it does
 
 | | |
 |---|---|
-| 🗣️ **Açıklar** | Her komutu sade dille anlatır ve risk seviyesini gösterir: 🟢 güvenli · 🟡 orta · 🟠 yüksek · 🔴 kritik. Yüzü aşkın komut kalıbını internete çıkmadan tanır. Tanımadığı komutları isteğe bağlı olarak küçük bir modelle açıklar. |
-| ✋ **Sorar** | Orta ve üstü riskli komutlarda, Claude’un normal izin sorusunun yerine ne olacağını anlatan bir soru çıkar. |
-| ⚠️ **Yedek alınamazsa sorar** | Disk dolu ya da izin sorunu gibi bir nedenle yedek gerçekten alınamazsa komutu körlemesine çalıştırmaz: “Yedek alınamadı, yine de çalıştırılsın mı?” diye sorar. Bilerek atlanan yedekler (ör. `node_modules`) eskisi gibi çalışır. |
-| 💾 **Yedekler** | Silinecek ya da üzerine yazılacak dosyaları arşivler. `git reset --hard` gibi projenin tamamını etkileyen komutlarda proje klasörünün görüntüsünü ayrı bir “gölge” depoya alır; projenizin kendi git geçmişine dokunmaz. Git dallarını ve force push öncesi uzak dalı kaydeder. |
-| ⟲ **Geri alır** | `/emniyet` panelindeki **[Geri al]** düğmesi ya da `/emniyet-geri-al`. Geri almadan önce o anki durumun da yedeği alınır; geri almayı da geri alabilirsiniz. |
-| 🔑 **Gizli bilgileri korur** | `.env`, SSH anahtarları, bulut kimlikleri, parola kasası… Claude bunları okumak ya da değiştirmek isterse önce size sorar. Gizli bir dosyayı okuyup internete gönderen komutları **veri sızdırma** olarak durdurur. Komutlardaki parola ve jetonlar ekranda, günlükte ve yapay zekâya giden açıklamalarda `•••` ile maskelenir. |
-| 🕵️ **Gizlenmiş komutları yakalar** | `base64 -d \| sh`, `eval "$(curl …)"`, `bash -c "…"` ve `$(…)` içindeki komutları açıp ayrıca inceler. `~/.zshrc`, LaunchAgents, cron gibi her açılışta çalışan yerlere yazmayı işaretler. |
-| 🐱 **Limitleri gösterir** | İstemin üstünde Claude tarzı turuncu bir kedi ve çubuklar: Claude'un **5 saatlik** ve **haftalık** limitinden ne kadar kaldığı, ne zaman yenileneceği, ayrıca kendi **günlük** ve **aylık** bütçeniz. Kedinin yüzü kalan limite göre değişir: `=^‿^=` → `=^･ω･^=` → `=;ω;=` → `=x_x=`. %80 ve %95'te uyarır. |
-| ⏯ **Aç / kapat** | `/emniyet` paneli açar ve kapatır. `/emniyet kapat 30` korumayı en fazla 60 dakika kapatır ve süre dolunca kendiliğinden açılır. Bu komutu yalnızca siz yazabilirsiniz; Claude ya da başka bir eklenti korumayı kapatamaz. |
-| 🧠 **Skill'ler** | `emniyet:guvenli-calisma` riskli işlerde Claude'a güvenli alternatifleri seçtirir. `emniyet:kurtarma` kaybolan dosya, dal ve commit'leri adım adım geri getirir. `emniyet:guvenlik-taramasi` projede sızmış anahtar, git'e girmiş `.env` ve açık izinleri **yalnızca okuyarak** tarar. |
-| 👥 **Ekip kuralları** | Projeye bir `.emniyet.json` koyarak komutları engelleyebilir ya da onay istetebilirsiniz. Proje dosyası korumayı yalnızca **sıkılaştırabilir**. "İzin ver" kuralları sadece sizin `~/.emniyet/policy.json` dosyanızda geçerlidir; böylece indirdiğiniz bir depo korumayı kapatamaz. |
-| 📒 **Kayıt tutar** | Riskli komutlar `~/.emniyet/audit.jsonl` dosyasına parolalar maskelenerek yazılır. `/emniyet-rapor` özet gösterir. |
+| 🗣️ **Explains** | Describes each command in plain language with a risk level: 🟢 safe · 🟡 medium · 🟠 high · 🔴 critical. Recognizes 100+ command patterns offline. Optionally explains unknown commands with a small model. |
+| ✋ **Asks** | For medium-and-above commands, you get a question that explains what will happen instead of Claude's generic permission prompt. |
+| 💾 **Backs up** | Archives files that are about to be deleted or overwritten. For commands that touch the whole project (like `git reset --hard`) it snapshots the folder into a separate “shadow” repo — your own git history is never touched. Saves git branches and the remote branch before a force push. |
+| ⚠️ **Asks if the backup fails** | If a backup genuinely fails (disk full, permissions…), it doesn't run the command blindly: “Backup failed — run it anyway?” Intentionally skipped backups (e.g. `node_modules`) work as before. |
+| ⟲ **Undoes** | The **[Undo]** button in the `/emniyet` pane, or `/emniyet-undo`. Without an id it only picks backups **from the project you're in**. The current state is backed up before undoing, so you can undo the undo too. |
+| 🔑 **Guards secrets** | `.env`, SSH keys, cloud credentials, password stores… Claude has to ask before reading or changing them. Commands that read a secret and send it over the network are stopped as **data exfiltration**. Passwords and tokens are masked as `•••` on screen, in logs and in AI explanations. |
+| 🕵️ **Catches hidden commands** | Unpacks and inspects `base64 -d \| sh`, `eval "$(curl …)"`, `bash -c "…"` and commands inside `$(…)`. Flags writes to places that run on every login: `~/.zshrc`, LaunchAgents, cron. |
+| 🐱 **Shows limits** | A Claude-style orange cat and bars above the prompt: how much of Claude's **5-hour** and **weekly** limits is left and when they reset, plus your own **daily** and **monthly** budget. The cat's face changes with what's left: `=^‿^=` → `=^･ω･^=` → `=;ω;=` → `=x_x=`. Warns at 80% and 95%. |
+| ⏯ **On / off** | `/emniyet off 30` turns protection off for up to 60 minutes and it **turns itself back on**. Only you can type it — Claude or another plugin cannot switch Emniyet off. |
+| 🧠 **Skills** | `emniyet:safe-work` makes Claude choose reversible options for risky work. `emniyet:recovery` walks through getting lost files, branches and commits back. `emniyet:security-scan` scans a project for leaked keys, committed `.env` files and open permissions — **read-only**. |
+| 👥 **Team rules** | Put a `.emniyet.json` in a project to block commands or require confirmation. A project file can only make protection **stricter**; “allow” rules only work in your own `~/.emniyet/policy.json`, so a cloned repo can't disable Emniyet. |
+| 📒 **Audit log** | Risky commands are written to `~/.emniyet/audit.jsonl` with secrets masked. `/emniyet-report` shows a summary. |
 
-### Komutlar
+### Commands
 
-- `/emniyet` — paneli açar / kapatır
-- `/emniyet kapat [dk]` · `/emniyet ac` — korumayı geçici olarak kapatır (en fazla 60 dk) ya da hemen açar
-- `/emniyet yardim` — tüm komutlar
-- `/emniyet-geri-al [id] [-y]` — son riskli komutu (ya da verilen kimliği) geri alır; `-y` onay sormaz
-- `/emniyet-limit [gizle|goster]` — limitler, bütçe ve kedi; bandı gizler/gösterir
-- `/emniyet-rapor` — kaç komut incelendi, kaç yedek alındı, kaç kez geri alındı
-
-### Ayarlar (`/config` → emniyet)
-
-| Ayar | Varsayılan | Açıklama |
+| English | Türkçe | What it does |
 |---|---|---|
-| `language` | `tr` | `tr` / `en` |
-| `confirmFrom` | `high` | Hangi riskten itibaren her durumda sorulsun: `high`, `critical`, `never` |
-| `aiExplain` | `true` | Tanınmayan komutları küçük bir modelle (haiku) açıkla |
-| `maxBackupMB` | `1024` | Bundan büyük hedefler arşivlenmez |
-| `dailyBudgetUSD` | `10` | Günlük bütçe (0 = kapalı) |
-| `monthlyBudgetUSD` | `150` | Aylık bütçe (0 = kapalı) |
-| `showLimitBand` | `true` | İstemin üstünde kedi ve limit çubukları |
-| `guardSecretFiles` | `true` | Gizli dosyalar okunmadan/değiştirilmeden önce sor |
-| `safetyPrompt` | `true` | Claude'a güvenli çalışma kurallarını hatırlat |
+| `/emniyet` | `/emniyet` | Open / close the pane |
+| `/emniyet off [min]` · `/emniyet on` | `/emniyet kapat [dk]` · `/emniyet ac` | Turn protection off for up to 60 min (comes back by itself) / on now |
+| `/emniyet-undo [id] [-y]` | `/emniyet-geri-al [id] [-y]` | Undo the last risky command in this project (or a given id); `-y` skips the confirmation |
+| `/emniyet-limits [hide\|show]` | `/emniyet-limit [gizle\|goster]` | Limits, budget and the cat; hide/show the band |
+| `/emniyet-report` | `/emniyet-rapor` | How many commands were checked, backed up and undone |
+| `/emniyet help` | `/emniyet yardim` | All commands |
 
-> **Limitler hakkında:** 5 saatlik ve haftalık çubuklar doğrudan Claude Code'un bildirdiği gerçek değerlerdir ve yalnızca Claude aboneliğiyle görünür. Claude'un günlük ya da aylık bir limiti yoktur; **günlük ve aylık çubuklar sizin belirlediğiniz bütçedir** ve Claude Code'un gösterdiği tahmini maliyetten hesaplanır. Abonelikte bu tutar gerçek bir ücret değildir.
+To disable Emniyet permanently: `/plugin disable emniyet`.
 
-### Ekip kuralları örneği (`.emniyet.json`)
+### Settings (`/config` → emniyet)
+
+| Setting | Default | Description |
+|---|---|---|
+| `language` | `auto` | `auto` (system language), `en`, `tr` |
+| `confirmFrom` | `high` | Always ask from this risk level: `high`, `critical`, `never` |
+| `aiExplain` | `true` | Explain unknown commands with a small model (Haiku) |
+| `maxBackupMB` | `1024` | Larger targets aren't archived |
+| `dailyBudgetUSD` | `10` | Daily budget (0 = off) |
+| `monthlyBudgetUSD` | `150` | Monthly budget (0 = off) |
+| `showLimitBand` | `true` | Cat and limit bars above the prompt |
+| `guardSecretFiles` | `true` | Ask before secret files are read or changed |
+| `safetyPrompt` | `true` | Remind Claude of safe-working rules |
+
+> **About limits:** the 5-hour and weekly bars are the real values Claude Code reports, and they appear only with a Claude subscription. Claude has no daily or monthly limit — **the daily and monthly bars are your own budget**, computed from Claude Code's estimated cost. On a subscription that amount is not an actual charge.
+
+### Team rules example (`.emniyet.json`)
 
 ```json
 {
   "block":   ["git push .*--force.*main", "terraform destroy", "DROP DATABASE"],
   "confirm": ["npm publish", "vercel --prod"],
   "allow":   ["rm -rf (dist|build|\\.next)"],
-  "note":    "Üretim ortamına dokunan komutlar için #ops kanalına yazın."
+  "note":    "Post in #ops before touching production."
 }
 ```
 
-## Güvenlik
+(`allow` is ignored in project files — put it in `~/.emniyet/policy.json`.)
 
-Emniyet'in kendisi de saldırıya karşı sertleştirildi. Ayrıntılar ve açık bildirme yolu [SECURITY.md](SECURITY.md) dosyasında.
+## Security
 
-- Yedekler `~/.emniyet` altında yalnızca sizin okuyabileceğiniz izinlerle (700/600) tutulur.
-- Her yedeğin SHA-256 özeti alınır. Sonradan değiştirilmiş ya da başka bir yeri gösteren bir yedek **geri yüklenmez**.
-- Emniyet'in çalıştırdığı git komutlarında projenin kancaları ve `core.fsmonitor` kapatılır; kötü niyetli bir depo, yedek alınırken kod çalıştıramaz.
-- Ekrana basılan komut metinlerindeki terminal kaçış karakterleri temizlenir.
-- Yapay zekâ açıklamasında komut metni "güvenilmeyen veri" olarak gönderilir; model riski yalnızca **yükseltebilir**.
-- Emniyet bir hata nedeniyle bir komutu inceleyemezse kritik komutları güvenlik için **durdurur**.
+Emniyet itself is hardened against attack. Details and how to report a vulnerability: [SECURITY.md](SECURITY.md).
 
-## Sınırlar
+- Backups live under `~/.emniyet` with owner-only permissions (700/600).
+- Every backup is SHA-256 hashed. A backup that was modified, or that points somewhere else, is **never restored**.
+- Git commands run by Emniyet disable the project's hooks and `core.fsmonitor`, so a malicious repo can't run code while a backup is taken.
+- Terminal escape sequences are stripped from displayed command text.
+- For AI explanations the command is sent as *untrusted data*; the model can only **raise** the risk, never lower it.
+- If Emniyet fails to analyze a command because of a bug, critical commands are **stopped** (fail-closed).
 
-- Sunucudaki veritabanları, bulut kaynakları, canlıya yayınlar ve `ssh` ile uzak sunucuda yapılanlar buradan yedeklenemez. Emniyet bunları ⛔ ile işaretler ve açıkça söyler.
-- `node_modules` gibi yeniden oluşturulabilen klasörler yedeklenmez.
-- Yedekler yalnızca kendi bilgisayarınızda (`~/.emniyet`) tutulur. Emniyet, gerçek yedeklerinizin yerine geçmez.
+## Limits
 
-## Katkıda bulunanlar
+- Remote databases, cloud resources, deploys and anything done over `ssh` can't be backed up from here. Emniyet marks them with ⛔ and says so.
+- Rebuildable folders like `node_modules` aren't backed up.
+- Backups are kept only on your computer (`~/.emniyet`). Emniyet doesn't replace real backups.
 
-- [@didemkastan](https://github.com/didemkastan): “Yedek alınamazsa riskli komutu çalıştırma” fikri ve ilk uygulaması ([#1](https://github.com/dagcann34/emniyet/pull/1)). v0.2.1’de onay sorusu olarak uyarlandı.
+## Contributors
 
-Katkılarınızı bekliyoruz. Yeni komut kuralları için `hooks/rules.ts`, testler için `tests/` klasörüne bakın.
+- [@didemkastan](https://github.com/didemkastan): the “don't run a risky command if the backup failed” idea and first implementation ([#1](https://github.com/dagcann34/emniyet/pull/1)), adapted as a confirmation in v0.2.1.
 
-## Geliştirme
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Development
 
 ```bash
-claude --plugin-dir ./emniyet       # yerelde dene
-claude plugin validate ./emniyet    # doğrula
-claude plugin test ./emniyet        # testleri çalıştır
+claude --plugin-dir ./emniyet       # try it locally
+claude plugin validate ./emniyet    # validate
+claude plugin test ./emniyet        # run the tests
 ```
 
-Katkılar ve yeni komut kuralları için PR’lar açıktır (`hooks/rules.ts`).
-
----
-
-## English
-
-**Emniyet** (Turkish for “safety”) is a free, open-source Claude Code plugin that explains every shell command Claude runs in plain language, asks before risky ones, **backs up first**, and lets you **undo with one command** (`/emniyet-geri-al`) — including uncommitted changes wiped by `git reset --hard`, deleted folders, and force-pushed branches. It guards secrets (asks before Claude reads `.env`/SSH keys, blocks secret exfiltration, masks tokens in logs), unpacks obfuscated commands, and shows your Claude 5-hour/weekly limits plus your own daily/monthly budget with a little orange cat. Set `language` to `en` in `/config`.
-
-```
-/plugin install emniyet --marketplace dagcann34/emniyet
-```
-
-MIT licensed.
+MIT licensed · [Changelog](CHANGELOG.md)

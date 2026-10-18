@@ -15,11 +15,11 @@ async function paneHas($: any, re: RegExp, surface: 'terminal' | 'desktop' = 'te
 
 type World = { runs: string[][]; asked: string[]; ran: string[] }
 
-function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; answer?: 'yes' | 'no'; store?: Record<string, unknown>; projectPolicy?: unknown; sha?: string; failTar?: boolean } = {}): World {
+function world(on: On, opts: { firstRun?: number; verdict?: 'allow' | 'ask'; answer?: 'yes' | 'no'; store?: Record<string, unknown>; projectPolicy?: unknown; sha?: string; failTar?: boolean; lang?: string } = {}): World {
   const w: World = { runs: [], asked: [], ran: [] }
   mock.clock(on, { now: NOW })
   mock.store(on, { firstRun: opts.firstRun ?? NOW, ...(opts.store ?? {}) })
-  mock.env(on, { HOME: '/Users/ali' })
+  mock.env(on, { HOME: '/Users/ali', LANG: opts.lang ?? 'tr_TR.UTF-8' })
   on('session.cwd', () => ({ value: '/Users/ali/proje' }))
   on('fs.exists', ($, e) => ({ value: /\.txt$|dist$|\/HEAD$/.test(e.path) || (opts.projectPolicy !== undefined && e.path.endsWith('.emniyet.json')) }))
   on('fs.stat', () => ({ value: { size: 100, mtimeMs: 0, isFile: true, isDirectory: false } as never }))
@@ -234,4 +234,45 @@ test('bilerek atlanan yedek (yeniden oluşturulabilir klasör) soru sormadan ça
   await $.tool.call({ tool: 'Bash', command: 'rm node_modules' })
   expect(w.asked.length).toBe(0)
   expect(w.ran).toEqual(['rm node_modules'])
+})
+
+test('dil otomatik: sistem dili İngilizce ise açıklamalar İngilizce', async ($, on) => {
+  world(on, { lang: 'en_US.UTF-8' })
+  await $.tool.call({ tool: 'Bash', command: 'rm notlar.txt' })
+  expect(await paneHas($, /Permanently deletes/)).toBe(true)
+})
+
+test('dil ayarı elle tr seçilirse sistem dili İngilizce olsa da Türkçe', { options: { language: 'tr' } }, async ($, on) => {
+  world(on, { lang: 'en_US.UTF-8' })
+  await $.tool.call({ tool: 'Bash', command: 'rm notlar.txt' })
+  expect(await paneHas($, /kalıcı olarak silinir/)).toBe(true)
+})
+
+test('kimliksiz geri alma yalnızca şu anki projenin yedeğini seçer', async ($, on) => {
+  const other = { id: 'zzz999aaa', at: NOW + 5, cwd: '/Users/ali/baska-proje', command: 'rm -rf build', paths: { file: '/Users/ali/.emniyet/backups/zzz999aaa.tar.gz', list: ['/Users/ali/baska-proje/build'], sha: 'b'.repeat(64) } }
+  const mine = { id: 'abc123mine', at: NOW, cwd: '/Users/ali/proje', command: 'rm notlar.txt', paths: { file: '/Users/ali/.emniyet/backups/abc123mine.tar.gz', list: ['/Users/ali/proje/notlar.txt'], sha: 'b'.repeat(64) } }
+  const w = world(on, { store: { snaps: [mine, other] } })
+  const r = await $.command.run({ command: 'emniyet-geri-al', args: '-y', origin: { kind: 'plugin', name: 'test' } } as never)
+  expect(r.text).toContain('Geri alındı')
+  const tar = w.runs.find(a => a[0] === 'tar' && a.includes('-xzPf'))
+  expect(tar).toContain('/Users/ali/.emniyet/backups/abc123mine.tar.gz')
+  expect(w.runs.some(a => a.includes('/Users/ali/.emniyet/backups/zzz999aaa.tar.gz') && a.includes('-xzPf'))).toBe(false)
+})
+
+test('bu projede yedek yoksa başka projeninki geri yüklenmez', async ($, on) => {
+  const other = { id: 'zzz999aaa', at: NOW, cwd: '/Users/ali/baska-proje', command: 'rm -rf build', paths: { file: '/Users/ali/.emniyet/backups/zzz999aaa.tar.gz', list: ['/Users/ali/baska-proje/build'] } }
+  const w = world(on, { store: { snaps: [other] } })
+  const r = await $.command.run({ command: 'emniyet-geri-al', args: '-y', origin: { kind: 'plugin', name: 'test' } } as never)
+  expect(r.text).toContain('Bu projede geri alınacak bir yedek bulunamadı')
+  expect(w.runs.some(a => a[0] === 'tar')).toBe(false)
+})
+
+test('English command aliases: /emniyet-undo works like /emniyet-geri-al', { options: { language: 'en' } }, async ($, on) => {
+  const mine = { id: 'abc123mine', at: NOW, cwd: '/Users/ali/proje', command: 'rm notes.txt', paths: { file: '/Users/ali/.emniyet/backups/abc123mine.tar.gz', list: ['/Users/ali/proje/notes.txt'], sha: 'b'.repeat(64) } }
+  const w = world(on, { store: { snaps: [mine] } })
+  const r = await $.command.run({ command: 'emniyet-undo', args: '-y', origin: { kind: 'plugin', name: 'test' } } as never)
+  expect(r.text).toContain('Undone')
+  expect(w.runs.some(a => a[0] === 'tar' && a.includes('-xzPf'))).toBe(true)
+  const rep = await $.command.run({ command: 'emniyet-report', args: '', origin: { kind: 'plugin', name: 'test' } } as never)
+  expect(rep.text.length).toBeGreaterThan(10)
 })
